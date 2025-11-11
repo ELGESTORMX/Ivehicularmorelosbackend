@@ -14,21 +14,15 @@ app.disable('etag')
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-// CORS robusto con preflight: reflejar encabezados solicitados
-const corsOptionsDelegate = function (req, callback) {
-	const opts = {
-		origin: true,
-		methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-		credentials: false,
-		preflightContinue: false,
-		optionsSuccessStatus: 204
-	};
-	const reqHeaders = req.headers['access-control-request-headers'];
-	if (reqHeaders) opts.allowedHeaders = reqHeaders; // reflejar los headers solicitados (p.ej., authorization)
-	callback(null, opts);
+// CORS abierto para todos los orígenes (replicable en distintos dominios)
+const corsAll = {
+  origin: '*',
+  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+  credentials: false,
+  allowedHeaders: ['Content-Type','Authorization','Accept','Origin','X-Requested-With']
 };
-app.use(cors(corsOptionsDelegate)); //obliga al servidor a cruzar los origrenes del front y back
-app.options('*', cors(corsOptionsDelegate)); // responder preflights
+app.use(cors(corsAll));
+app.options('*', cors(corsAll));
 app.use(logger('dev')); //obliga al servidor a usar el middleware de registro de peticiones
 app.use(express.json())
 app.use(express.urlencoded({extended: false}))

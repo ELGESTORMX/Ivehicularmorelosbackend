@@ -7,7 +7,8 @@
         "start": "node ./bin/www",
         "dev": "nodemon ./bin/www",
         "users": "node ./models/data/users.js",
-        "permisos": "node ./models/data/permisos.js"
+        "permisos": "node ./models/data/permisos.js",
+        "seed:superadmin": "node ./scripts/seedSuperAdmin.js"
     },
     "dependencies": {
         "bcrypt": "^5.1.1",
@@ -28,6 +29,7 @@
         "passport": "^0.6.0",
         "passport-jwt": "^4.0.1",
         "pdf-lib": "^1.17.1",
+        "qrcode": "^1.5.3",
         "socket.io": "^4.7.2"
     }
 }
