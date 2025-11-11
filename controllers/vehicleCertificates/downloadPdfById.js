@@ -82,19 +82,49 @@ export default async function downloadPdfById(req, res) {
 
     // Intentar embeder plantilla de fondo si existe
     try {
-      const candidates = [
-        path.join(__dirname, '..', 'frontEnd', 'public', 'pdf', 'pdfconstancia_page-0001.jpg'),
-        path.join(__dirname, 'public', 'templates', 'pdfconstancia_page-0001.jpg')
+      // Intentar primero ruta absoluta en frontend (despliegue conjunto) y luego plantilla fallback
+      const fileNames = [
+        'pdfconstancia_page-0001.jpg',
+        'pdfconstancia_page-0001.jpeg',
+        'pdfconstancia_page-0001.png'
       ];
-      for (const p of candidates) {
-        if (fs.existsSync(p)) {
-          const imgBytes = fs.readFileSync(p);
-          const jpg = await pdfDoc.embedJpg(imgBytes);
-          const { width, height } = jpg.scale(1);
-          page.drawImage(jpg, { x: 0, y: 0, width: 595.28, height: 841.89 });
-          break;
+      const bases = [
+        path.join(__dirname, '..', 'frontEnd', 'public', 'pdf'),
+        path.join(process.cwd(), 'frontEnd', 'public', 'pdf'),
+        path.join(__dirname, 'public', 'templates')
+      ];
+      let usedTemplate = '';
+      let embedded = false;
+      for (const base of bases) {
+        for (const name of fileNames) {
+          const p = path.join(base, name);
+          try {
+            if (fs.existsSync(p)) {
+              const imgBytes = fs.readFileSync(p);
+              if (name.endsWith('.png')) {
+                const png = await pdfDoc.embedPng(imgBytes);
+                page.drawImage(png, { x: 0, y: 0, width: 595.28, height: 841.89 });
+              } else {
+                const jpg = await pdfDoc.embedJpg(imgBytes);
+                page.drawImage(jpg, { x: 0, y: 0, width: 595.28, height: 841.89 });
+              }
+              embedded = true;
+              usedTemplate = p;
+              break;
+            }
+          } catch {}
         }
+        if (embedded) break;
       }
+      if (!embedded) {
+        // Fallback: rectángulo gris claro indicando ausencia de plantilla
+        page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: rgb(0.95,0.95,0.95) });
+        const helvLocal = helvBold || helv;
+        page.drawText('PLANTILLA NO ENCONTRADA', { x: 180, y: 800, size: 12, font: helvLocal, color: rgb(1,0,0) });
+        usedTemplate = 'none';
+      }
+      // Exponer ruta usada para diagnóstico en cabecera HTTP
+      try { res.setHeader('X-PDF-Template', usedTemplate); } catch {}
     } catch {}
 
   // Título removido (ya está en la imagen de fondo)
@@ -188,7 +218,7 @@ export default async function downloadPdfById(req, res) {
       if (cert.folio) {
         verifyUrl += `&folio=${encodeURIComponent(String(cert.folio))}`;
       }
-      const dataUrl = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 180 });
+  const dataUrl = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 180, errorCorrectionLevel: 'M' });
       const b64 = dataUrl.split(',')[1];
       const pngBytes = Buffer.from(b64, 'base64');
       const qrImg = await pdfDoc.embedPng(pngBytes);
