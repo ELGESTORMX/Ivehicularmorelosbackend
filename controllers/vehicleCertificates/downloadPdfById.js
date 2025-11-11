@@ -3,6 +3,8 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import QRCode from 'qrcode'
 import fs from 'fs'
 import path from 'path'
+import http from 'http'
+import https from 'https'
 import { __dirname } from '../../utils.js'
 
 // GET /api/vehicle-certificates/:id/pdf
@@ -116,6 +118,60 @@ export default async function downloadPdfById(req, res) {
         }
         if (embedded) break;
       }
+
+      // Si no se encontró en disco, intentar descargar desde el frontend (origen del referer/origin)
+      if (!embedded) {
+        // Determinar base pública del frontend (igual que para el QR)
+        const originHeader = String(req.headers.origin || '').trim();
+        const refererHeader = String(req.headers.referer || '').trim();
+        let refererOrigin = '';
+        if (refererHeader) {
+          try { refererOrigin = new URL(refererHeader).origin; } catch {}
+        }
+        const xfProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+        const xfHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+        const proto = xfProto || (req.secure ? 'https' : (req.protocol || 'http'));
+        const host = xfHost || String(req.get('host') || '').trim();
+        const serverBase = host ? `${proto}://${host}` : '';
+        const chosenBase = (originHeader || refererOrigin || serverBase || '').replace(/\/$/, '');
+
+        async function fetchBuffer(u) {
+          return await new Promise((resolve, reject) => {
+            const lib = u.startsWith('https') ? https : http;
+            const reqHttp = lib.get(u, res2 => {
+              if (res2.statusCode && res2.statusCode >= 300 && res2.statusCode < 400 && res2.headers.location) {
+                // seguir redirección
+                return fetchBuffer(res2.headers.location).then(resolve).catch(reject);
+              }
+              if (res2.statusCode !== 200) return reject(new Error('HTTP ' + res2.statusCode));
+              const data = [];
+              res2.on('data', chunk => data.push(chunk));
+              res2.on('end', () => resolve(Buffer.concat(data)));
+            });
+            reqHttp.on('error', reject);
+          });
+        }
+
+        if (chosenBase) {
+          for (const name of fileNames) {
+            const url = `${chosenBase}/pdf/${name}`;
+            try {
+              const buf = await fetchBuffer(url);
+              if (name.endsWith('.png')) {
+                const png = await pdfDoc.embedPng(buf);
+                page.drawImage(png, { x: 0, y: 0, width: 595.28, height: 841.89 });
+              } else {
+                const jpg = await pdfDoc.embedJpg(buf);
+                page.drawImage(jpg, { x: 0, y: 0, width: 595.28, height: 841.89 });
+              }
+              embedded = true;
+              usedTemplate = url;
+              break;
+            } catch {}
+          }
+        }
+      }
+
       if (!embedded) {
         // Fallback: rectángulo gris claro indicando ausencia de plantilla
         page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: rgb(0.95,0.95,0.95) });
