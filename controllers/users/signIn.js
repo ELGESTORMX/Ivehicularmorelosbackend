@@ -13,8 +13,10 @@ export default async(req, res, next) => {
             });
         }
 
-        // Buscar usuario (sin actualizar nada aún)
-        const user = await Users.findOne({ username });
+    // Si ya viene de passwordIsOk, reutilizar y no duplicar consultas/comparaciones
+    const userFromPrev = req.user && req.user.username === username ? req.user : null;
+    // Buscar usuario (sin actualizar nada aún)
+    const user = userFromPrev || await Users.findOne({ username });
         
         if (!user) {
             return res.status(401).json({
@@ -32,13 +34,12 @@ export default async(req, res, next) => {
             });
         }
 
-        // Verificar password hasheada
-        const isValidPassword = await bcrypt.compare(password, user.password);
-        if (!isValidPassword) {
-            return res.status(401).json({
-                success: false,
-                message: 'Credenciales incorrectas'
-            });
+        // Si no se validó aún la contraseña en middleware previo, validar aquí
+        if (!userFromPrev) {
+            const isValidPassword = await bcrypt.compare(password, user.password);
+            if (!isValidPassword) {
+                return res.status(401).json({ success: false, message: 'Credenciales incorrectas' });
+            }
         }
 
         // Actualizar sessionCount solo después de validar credenciales
@@ -58,7 +59,7 @@ export default async(req, res, next) => {
         console.error('Error en signIn:', error);
         return res.status(500).json({
             success: false,
-            message: 'Error interno del servidor'
+            message: process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : `Error interno del servidor: ${error?.message || error}`
         });
     }
 };

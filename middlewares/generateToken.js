@@ -1,16 +1,27 @@
 import jwt from 'jsonwebtoken'
 
 export default (req,res,next)=> {
-    let token = jwt.sign(
-        { 
-            username: req.user.username,        // Username del usuario autenticado
-            _id: req.user._id,                 // ID del usuario
-            role: req.user.role                // Role para permisos (este sí es estático)
-            // creationLimit removido - se maneja dinámicamente desde DB
-        },
-        process.env.SECRET_KEY,         //llave necesaria para tokenizar/destokenizar (crear una variable de entorno)
-        { expiresIn:'100y' }        //tiempo de vencimiento del token en segundos
-    )
-    req.token = token                   //agrego al objeto de requerimientos la propeidad token con el token
-    return next()
+    try {
+        if (!process.env.SECRET_KEY) {
+            const msg = 'SECRET_KEY no definido';
+            if (process.env.NODE_ENV !== 'production') console.error(`[Auth] ${msg}`);
+            return res.status(500).json({ success:false, message:'Config del servidor inválida' });
+        }
+        if (!req.user) {
+            const msg = 'Usuario no establecido antes de firmar token';
+            if (process.env.NODE_ENV !== 'production') console.error(`[Auth] ${msg}`);
+            return res.status(500).json({ success:false, message:'Error interno' });
+        }
+        const payload = {
+            username: req.user.username,
+            _id: req.user._id,
+            role: req.user.role
+        };
+        const token = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn:'100y' });
+        req.token = token;
+        return next();
+    } catch (e) {
+        console.error('[Auth] Error al generar token:', e?.message || e);
+        return res.status(500).json({ success:false, message:'Error interno del servidor' });
+    }
 }
