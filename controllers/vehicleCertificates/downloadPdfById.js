@@ -167,12 +167,20 @@ export default async function downloadPdfById(req, res) {
 
     // QR con liga de verificación -> apuntar a la página pública de validación (/sicive-validate)
     try {
-  // Construimos la base de validación según entorno
-  // Descubrir la base del frontend: prioridad env > Origin > Host
-  const envBase = (process.env.FRONTEND_BASE || process.env.VALIDATION_BASE || '').trim();
-  const origin = String(req.headers.origin || '').trim();
-  const hostBase = `${req.protocol}://${req.get('host')}`;
-  const chosenBase = (envBase || origin || hostBase || 'http://localhost:5173').replace(/\/$/, '');
+  // Construimos la base de validación de forma automática (sin depender de variables de entorno)
+  // Prioridad: Origin > Referer.origin > X-Forwarded-Proto/Host > req.protocol + req.get('host') > localhost
+  const originHeader = String(req.headers.origin || '').trim();
+  const refererHeader = String(req.headers.referer || '').trim();
+  let refererOrigin = '';
+  if (refererHeader) {
+    try { refererOrigin = new URL(refererHeader).origin; } catch {}
+  }
+  const xfProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const xfHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const proto = xfProto || (req.secure ? 'https' : (req.protocol || 'http'));
+  const host = xfHost || String(req.get('host') || '').trim();
+  const serverBase = host ? `${proto}://${host}` : '';
+  const chosenBase = (originHeader || refererOrigin || serverBase || 'http://localhost:5173').replace(/\/$/, '');
   // Apuntar a la vista estática exacta consulta.html
   const withPath = `${chosenBase}/sicive/consulta.html`;
   let verifyUrl = `${withPath}?id=${encodeURIComponent(String(cert._id))}`;
